@@ -41,6 +41,10 @@ import com.awilson.focuslauncher.data.AppCatalog
 import com.awilson.focuslauncher.data.AppEntry
 import com.awilson.focuslauncher.data.FocusPrefs
 import com.awilson.focuslauncher.ui.AppPickerRow
+import com.awilson.focuslauncher.ui.AppPickerSearch
+import com.awilson.focuslauncher.ui.SortMode
+import com.awilson.focuslauncher.ui.SortToggle
+import com.awilson.focuslauncher.ui.filterAndSort
 import com.awilson.focuslauncher.ui.theme.FocusTheme
 import kotlinx.coroutines.launch
 
@@ -213,9 +217,33 @@ private fun ColumnScope.GridSubscreen(
     onBack: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val apps = remember { AppCatalog.launchableAppsByUsage(context) }
+    var usageGranted by remember { mutableStateOf(AppCatalog.hasUsageStatsPermission(context)) }
+    val alphabetical = remember { AppCatalog.launchableApps(context) }
+    var byUsage by remember { mutableStateOf(AppCatalog.launchableAppsByUsage(context)) }
+    var sortMode by remember { mutableStateOf(if (usageGranted) SortMode.Usage else SortMode.Alphabetical) }
+    var query by remember { mutableStateOf("") }
+
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                val granted = AppCatalog.hasUsageStatsPermission(context)
+                if (granted != usageGranted) {
+                    usageGranted = granted
+                    byUsage = AppCatalog.launchableAppsByUsage(context)
+                    if (granted) sortMode = SortMode.Usage
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     val selected = remember {
         mutableStateListOf<String>().apply { addAll(existing.map { it.packageName }) }
+    }
+    val displayed = remember(query, sortMode, alphabetical, byUsage) {
+        filterAndSort(query, sortMode, alphabetical, byUsage)
     }
 
     SettingsHeader("Configure grid")
@@ -224,8 +252,18 @@ private fun ColumnScope.GridSubscreen(
         color = MaterialTheme.colorScheme.onBackground,
         fontSize = 13.sp,
     )
+
+    AppPickerSearch(query = query, onQueryChange = { query = it })
+
+    SortToggle(
+        current = sortMode,
+        usageAvailable = usageGranted,
+        onChange = { sortMode = it },
+        onGrantUsage = { AppCatalog.openUsageAccessSettings(context) },
+    )
+
     LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
-        items(apps, key = { it.packageName }) { app ->
+        items(displayed, key = { it.packageName }) { app ->
             AppPickerRow(
                 packageName = app.packageName,
                 label = app.label,
@@ -244,9 +282,11 @@ private fun ColumnScope.GridSubscreen(
         TextButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Cancel") }
         Button(
             onClick = {
-                val picked = apps
-                    .filter { selected.contains(it.packageName) }
-                    .map { AppEntry(packageName = it.packageName, label = it.label) }
+                val pickedPkgs = selected.toList()
+                val labelByPkg = (alphabetical + byUsage).associateBy({ it.packageName }, { it.label })
+                val picked = pickedPkgs.map { pkg ->
+                    AppEntry(packageName = pkg, label = labelByPkg[pkg] ?: pkg)
+                }
                 (context as ComponentActivity).lifecycleScope.launch {
                     prefs.setGridApps(picked)
                     onBack()

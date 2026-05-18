@@ -47,6 +47,10 @@ import com.awilson.focuslauncher.data.AppEntry
 import com.awilson.focuslauncher.data.FocusPrefs
 import com.awilson.focuslauncher.data.LaunchableApp
 import com.awilson.focuslauncher.ui.AppPickerRow
+import com.awilson.focuslauncher.ui.AppPickerSearch
+import com.awilson.focuslauncher.ui.SortMode
+import com.awilson.focuslauncher.ui.SortToggle
+import com.awilson.focuslauncher.ui.filterAndSort
 import com.awilson.focuslauncher.ui.theme.FocusTheme
 import kotlinx.coroutines.launch
 
@@ -334,8 +338,12 @@ private fun ColumnScope.ConfigureGridStep(
     existing: List<AppEntry>,
     onSave: (List<AppEntry>) -> Unit,
 ) {
+    val context = LocalContext.current
     var usageGranted by remember { mutableStateOf(hasUsageStats()) }
-    var apps by remember { mutableStateOf(listApps()) }
+    var alphabetical by remember { mutableStateOf(AppCatalog.launchableApps(context)) }
+    var byUsage by remember { mutableStateOf(listApps()) }
+    var sortMode by remember { mutableStateOf(if (usageGranted) SortMode.Usage else SortMode.Alphabetical) }
+    var query by remember { mutableStateOf("") }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -344,7 +352,8 @@ private fun ColumnScope.ConfigureGridStep(
                 val granted = hasUsageStats()
                 if (granted != usageGranted) {
                     usageGranted = granted
-                    apps = listApps()
+                    byUsage = listApps()
+                    if (granted) sortMode = SortMode.Usage
                 }
             }
         }
@@ -355,6 +364,9 @@ private fun ColumnScope.ConfigureGridStep(
     val selected = remember {
         mutableStateListOf<String>().apply { addAll(existing.map { it.packageName }) }
     }
+    val displayed = remember(query, sortMode, alphabetical, byUsage) {
+        filterAndSort(query, sortMode, alphabetical, byUsage)
+    }
 
     StepHeader(title = "Choose your apps")
     Text(
@@ -363,12 +375,17 @@ private fun ColumnScope.ConfigureGridStep(
         fontSize = 14.sp,
     )
 
-    if (!usageGranted) {
-        UsageAccessBanner(onClick = openUsageStatsSettings)
-    }
+    AppPickerSearch(query = query, onQueryChange = { query = it })
+
+    SortToggle(
+        current = sortMode,
+        usageAvailable = usageGranted,
+        onChange = { sortMode = it },
+        onGrantUsage = openUsageStatsSettings,
+    )
 
     LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f, fill = true)) {
-        items(apps, key = { it.packageName }) { app ->
+        items(displayed, key = { it.packageName }) { app ->
             val isChecked = selected.contains(app.packageName)
             AppPickerRow(
                 packageName = app.packageName,
@@ -389,42 +406,15 @@ private fun ColumnScope.ConfigureGridStep(
         text = "Save (${selected.size} selected)",
         enabled = selected.size in GRID_MIN..GRID_MAX,
         onClick = {
-            val picked = apps.filter { selected.contains(it.packageName) }
-                .map { AppEntry(packageName = it.packageName, label = it.label) }
+            val pickedPkgs = selected.toList()
+            val labelByPkg = (alphabetical + byUsage).associateBy({ it.packageName }, { it.label })
+            val picked = pickedPkgs.map { pkg ->
+                AppEntry(packageName = pkg, label = labelByPkg[pkg] ?: pkg)
+            }
             onSave(picked)
         },
     )
 }
-
-@Composable
-private fun UsageAccessBanner(onClick: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-        ) {
-            Text(
-                text = "Sort by how much you actually use each app?",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "Grant Usage Access so Focus can rank apps by foreground time.",
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                fontSize = 12.sp,
-            )
-            Spacer(Modifier.height(8.dp))
-            TextButton(onClick = onClick) { Text("Open Usage Access settings") }
-        }
-    }
-}
-
 
 @Composable
 private fun DoneStep(onFinish: () -> Unit) {
