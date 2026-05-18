@@ -1,0 +1,23 @@
+# Gradle
+.gradle/
+build/
+app/build/
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+.kotlin/
+
+# Local config (machine-specific paths, SDK location, keystore secrets)
+local.properties
+
+# Captures / profiling
+captures/
+
+# Crashlytics / Google Services junk
+google-services.json
+*.keystore
+
+# OS
+.DS_Store
+Thumbs.db

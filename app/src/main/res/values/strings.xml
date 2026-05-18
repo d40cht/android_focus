@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Focus</string>
+    <string name="unlock_full_phone">Unlock full phone</string>
+    <string name="dnd_permission_needed">Notification access not granted — tap to fix</string>
+    <string name="onboarding_welcome_title">Focus</string>
+    <string name="onboarding_welcome_body">A home screen that asks what you came here to do, instead of showing you what you didn\'t.</string>
+    <string name="onboarding_continue">Continue</string>
+    <string name="onboarding_capture_title">Pick your fallback launcher</string>
+    <string name="onboarding_capture_body">When you tap "Unlock full phone", we\'ll return you to this launcher.</string>
+    <string name="onboarding_dnd_title">Allow Do Not Disturb</string>
+    <string name="onboarding_dnd_body">Focus turns on Do Not Disturb when you open it, so notifications can\'t pull you out of what you came here to do.</string>
+    <string name="onboarding_dnd_open_settings">Open notification access settings</string>
+    <string name="onboarding_home_title">Set Focus as your home screen</string>
+    <string name="onboarding_home_body">Pressing home should bring you here. We\'ll ask Android for the home role next.</string>
+    <string name="onboarding_home_request">Set as home</string>
+    <string name="onboarding_home_settings_fallback">Open home app settings</string>
+    <string name="onboarding_grid_title">Choose your apps</string>
+    <string name="onboarding_grid_body">Pick the apps that should appear on your focus screen. Aim for 4–8.</string>
+    <string name="onboarding_done_title">Ready</string>
+    <string name="onboarding_done_body">Lock and unlock your phone, or press home, to start using Focus.</string>
+    <string name="onboarding_done_finish">Finish</string>
+</resources>
