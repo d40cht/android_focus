@@ -55,7 +55,7 @@ import com.awilson.focuslauncher.ui.theme.FocusTheme
 import kotlinx.coroutines.launch
 
 private const val GRID_MIN = 1
-private const val GRID_MAX = 16
+private const val GRID_MAX = 28
 
 class OnboardingActivity : ComponentActivity() {
 

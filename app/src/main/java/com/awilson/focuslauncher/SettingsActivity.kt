@@ -48,7 +48,7 @@ import com.awilson.focuslauncher.ui.filterAndSort
 import com.awilson.focuslauncher.ui.theme.FocusTheme
 import kotlinx.coroutines.launch
 
-private const val GRID_MAX = 16
+private const val GRID_MAX = 28
 
 private sealed class Screen {
     data object Menu : Screen()

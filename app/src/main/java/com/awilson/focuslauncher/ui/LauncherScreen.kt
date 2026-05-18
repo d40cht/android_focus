@@ -69,10 +69,10 @@ fun LauncherScreen(
             }
 
             LazyVerticalGrid(
-                columns = GridCells.Fixed(if (apps.size <= 4) 2 else 3),
+                columns = GridCells.Fixed(columnsFor(apps.size)),
                 contentPadding = PaddingValues(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
@@ -116,16 +116,13 @@ private fun AppTile(entry: AppEntry, onClick: () -> Unit) {
 
     Column(
         modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(8.dp),
+            .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
-            modifier = Modifier
-                .size(64.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surface),
+            modifier = Modifier.size(56.dp),
             contentAlignment = Alignment.Center,
         ) {
             if (icon != null) {
@@ -135,23 +132,37 @@ private fun AppTile(entry: AppEntry, onClick: () -> Unit) {
                     modifier = Modifier.size(48.dp),
                 )
             } else {
-                Text(
-                    text = entry.label.take(1).uppercase(),
-                    color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = 24.sp,
-                )
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surface),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = entry.label.take(1).uppercase(),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 20.sp,
+                    )
+                }
             }
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(4.dp))
         Text(
             text = entry.label,
             color = MaterialTheme.colorScheme.onBackground,
-            fontSize = 13.sp,
+            fontSize = 11.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
         )
     }
+}
+
+private fun columnsFor(count: Int): Int = when {
+    count <= 4 -> 2
+    count <= 9 -> 3
+    else -> 4
 }
 
 @Composable

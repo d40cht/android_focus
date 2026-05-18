@@ -76,6 +76,8 @@ class LauncherActivity : ComponentActivity() {
             // Re-arm focus mode every time the launcher resumes.
             lifecycleScope.launch { prefs.setFocusModeActive(true) }
             FocusDndController.applyFocus(this, s.dndFilter, s.autoDismissNotifications)
+            // We're back in focus, the paused service (if running) is no longer needed.
+            FocusPausedService.stop(this)
         }
     }
 
@@ -104,6 +106,8 @@ class LauncherActivity : ComponentActivity() {
     private fun unlockFullPhone(fallbackPackage: String?) {
         lifecycleScope.launch { prefs.setFocusModeActive(false) }
         FocusDndController.releaseFocus(this)
+        // Start the foreground service so the SCREEN_OFF receiver stays alive while user is away.
+        FocusPausedService.start(this)
         val intent = buildFallbackHomeIntent(fallbackPackage)
         try {
             startActivity(intent)
