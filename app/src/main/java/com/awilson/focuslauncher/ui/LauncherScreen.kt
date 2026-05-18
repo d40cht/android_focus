@@ -15,32 +15,60 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.awilson.focuslauncher.data.AppEntry
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyGridState
 
 @Composable
 fun LauncherScreen(
     apps: List<AppEntry>,
     onAppClick: (AppEntry) -> Unit,
+    onReorder: (List<AppEntry>) -> Unit,
     onUnlockFullPhone: () -> Unit,
     onOpenSettings: () -> Unit,
     dndPermissionGranted: Boolean,
     onRequestDndPermission: () -> Unit,
 ) {
+    val orderedApps = remember { mutableStateListOf<AppEntry>().apply { addAll(apps) } }
+
+    // Re-sync from prop when the *set* of packages changes (Settings added/removed an app).
+    // Ignore reorders we've just persisted, since those round-trip identical sets.
+    LaunchedEffect(apps.map { it.packageName }.toSet()) {
+        val currentPkgs = orderedApps.map { it.packageName }.toSet()
+        val newPkgs = apps.map { it.packageName }.toSet()
+        if (currentPkgs != newPkgs) {
+            orderedApps.clear()
+            orderedApps.addAll(apps)
+        }
+    }
+
+    val gridState = rememberLazyGridState()
+    val haptic = LocalHapticFeedback.current
+    val reorderState = rememberReorderableLazyGridState(gridState) { from, to ->
+        val movedItem = orderedApps.removeAt(from.index)
+        orderedApps.add(to.index, movedItem)
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
@@ -69,7 +97,8 @@ fun LauncherScreen(
             }
 
             LazyVerticalGrid(
-                columns = GridCells.Fixed(columnsFor(apps.size)),
+                state = gridState,
+                columns = GridCells.Fixed(columnsFor(orderedApps.size)),
                 contentPadding = PaddingValues(vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -77,8 +106,31 @@ fun LauncherScreen(
                     .weight(1f)
                     .fillMaxWidth(),
             ) {
-                items(apps, key = { it.packageName }) { entry ->
-                    AppTile(entry = entry, onClick = { onAppClick(entry) })
+                items(
+                    count = orderedApps.size,
+                    key = { i -> orderedApps[i].packageName },
+                ) { index ->
+                    val entry = orderedApps[index]
+                    ReorderableItem(
+                        state = reorderState,
+                        key = entry.packageName,
+                    ) { isDragging ->
+                        AppTile(
+                            entry = entry,
+                            isDragging = isDragging,
+                            onClick = { onAppClick(entry) },
+                            dragModifier = Modifier.longPressDraggableHandle(
+                                onDragStarted = {
+                                    haptic.performHapticFeedback(
+                                        androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress
+                                    )
+                                },
+                                onDragStopped = {
+                                    onReorder(orderedApps.toList())
+                                },
+                            ),
+                        )
+                    }
                 }
             }
 
@@ -86,7 +138,7 @@ fun LauncherScreen(
 
             androidx.compose.foundation.layout.Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 TextButton(onClick = onOpenSettings) {
@@ -111,12 +163,20 @@ fun LauncherScreen(
 }
 
 @Composable
-private fun AppTile(entry: AppEntry, onClick: () -> Unit) {
+private fun AppTile(
+    entry: AppEntry,
+    isDragging: Boolean,
+    onClick: () -> Unit,
+    dragModifier: Modifier,
+) {
     val icon = rememberAppIcon(entry.packageName)
+    val scale = if (isDragging) 1.1f else 1f
 
     Column(
         modifier = Modifier
+            .scale(scale)
             .clip(RoundedCornerShape(12.dp))
+            .then(dragModifier)
             .clickable(onClick = onClick)
             .padding(4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -159,12 +219,6 @@ private fun AppTile(entry: AppEntry, onClick: () -> Unit) {
     }
 }
 
-private fun columnsFor(count: Int): Int = when {
-    count <= 4 -> 2
-    count <= 9 -> 3
-    else -> 4
-}
-
 @Composable
 private fun DndBanner(onClick: () -> Unit) {
     Surface(
@@ -183,3 +237,8 @@ private fun DndBanner(onClick: () -> Unit) {
     }
 }
 
+private fun columnsFor(count: Int): Int = when {
+    count <= 4 -> 2
+    count <= 9 -> 3
+    else -> 4
+}

@@ -60,6 +60,9 @@ class LauncherActivity : ComponentActivity() {
                 LauncherScreen(
                     apps = state.gridApps,
                     onAppClick = ::launchApp,
+                    onReorder = { reordered ->
+                        lifecycleScope.launch { prefs.setGridApps(reordered) }
+                    },
                     onUnlockFullPhone = { unlockFullPhone(state.fallbackLauncherPackage) },
                     onOpenSettings = ::openSettings,
                     dndPermissionGranted = isDndPermissionGranted(),
