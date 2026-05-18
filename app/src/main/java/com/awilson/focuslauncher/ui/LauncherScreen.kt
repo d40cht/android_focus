@@ -23,8 +23,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,8 +39,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.awilson.focuslauncher.data.AppEntry
+import kotlinx.coroutines.delay
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyGridState
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun LauncherScreen(
@@ -79,17 +85,21 @@ fun LauncherScreen(
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(72.dp))
+            Spacer(Modifier.height(56.dp))
+
+            ClockDisplay()
+
+            Spacer(Modifier.height(24.dp))
 
             Text(
                 text = "What did you come here to do?",
-                color = MaterialTheme.colorScheme.onBackground,
-                fontSize = 18.sp,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                fontSize = 16.sp,
                 fontWeight = FontWeight.Light,
                 textAlign = TextAlign.Center,
             )
 
-            Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.height(32.dp))
 
             if (!dndPermissionGranted) {
                 DndBanner(onClick = onRequestDndPermission)
@@ -241,4 +251,39 @@ private fun columnsFor(count: Int): Int = when {
     count <= 4 -> 2
     count <= 9 -> 3
     else -> 4
+}
+
+@Composable
+private fun ClockDisplay() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val is24Hour = remember { android.text.format.DateFormat.is24HourFormat(context) }
+    val timeFormatter = remember(is24Hour) {
+        DateTimeFormatter.ofPattern(if (is24Hour) "HH:mm" else "h:mm a")
+    }
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("EEEE d MMMM") }
+
+    var now by remember { mutableStateOf(LocalDateTime.now()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            now = LocalDateTime.now()
+            // Sleep until just past the next minute boundary so the clock ticks promptly.
+            val msToNextMinute = 60_000L - (System.currentTimeMillis() % 60_000L) + 50L
+            delay(msToNextMinute)
+        }
+    }
+
+    Text(
+        text = now.format(timeFormatter),
+        color = MaterialTheme.colorScheme.onBackground,
+        fontSize = 64.sp,
+        fontWeight = FontWeight.Light,
+        textAlign = TextAlign.Center,
+    )
+    Text(
+        text = now.format(dateFormatter),
+        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f),
+        fontSize = 14.sp,
+        fontWeight = FontWeight.Light,
+        textAlign = TextAlign.Center,
+    )
 }
