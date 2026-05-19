@@ -6,48 +6,78 @@ import android.content.Context
 /**
  * Applies and clears the focus-mode DND state.
  *
- * When focus mode is active with notification hiding enabled, we:
- *  - Set the notification policy's suppressedVisualEffects so that any notification DND intercepts
- *    is hidden from the shade, status bar, peek, ambient display, badge, lights, and full-screen
- *    intents — i.e. it's silently filed away rather than rendered.
- *  - Apply the user's chosen interruption filter (Priority / Alarms / None) so the system DND
- *    machinery actually intercepts the right notifications.
+ * Hide-everything semantics: when focus is active and `autoDismissNotifications` is true, we set
+ *   - priorityCategories: PRIORITY_CATEGORY_ALARMS only — overriding the user's system DND priority
+ *     list so the only thing allowed through DND is alarms (clock alarms still work). Everything
+ *     else is intercepted.
+ *   - suppressedVisualEffects: every visual flag (notification list, status bar, peek, ambient,
+ *     lights, badge, full-screen intent) — so intercepted notifications are fully hidden, not just
+ *     silenced.
  *
- * We preserve the user's priority categories and sender lists (their existing DND config),
- * touching only the visual-effects bits.
+ * Hide-off semantics: we restore the snapshotted priorityCategories (so the user's normal DND
+ * config is back) and clear suppressedVisualEffects to 0.
  *
- * On exit, we just turn DND off (INTERRUPTION_FILTER_ALL). At that point, suppressedVisualEffects
- * no longer apply because no notification is being intercepted by DND.
+ * On first call where there's no snapshot yet, we capture the user's current
+ * priorityCategories + suppressedVisualEffects. We restore from that snapshot on releaseFocus and
+ * then clear it, so the next focus entry re-captures a fresh snapshot of whatever the user has
+ * set externally in the meantime.
  */
 object FocusDndController {
 
-    fun applyFocus(context: Context, filter: Int, hideNotifications: Boolean): Boolean {
+    suspend fun applyFocus(context: Context, prefs: FocusPrefs, state: FocusState): Boolean {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return false
         if (!nm.isNotificationPolicyAccessGranted) return false
 
-        if (hideNotifications) {
-            applyHidingPolicy(nm)
+        val current = nm.notificationPolicy
+        if (state.originalSuppressedVisualEffects == null || state.originalPriorityCategories == null) {
+            prefs.saveOriginalDndPolicy(
+                suppressedVisualEffects = current.suppressedVisualEffects,
+                priorityCategories = current.priorityCategories,
+            )
         }
-        return runCatching { nm.setInterruptionFilter(filter) }.isSuccess
+
+        val newPolicy = if (state.autoDismissNotifications) {
+            // Hide mode: only alarms allowed; intercepted things are fully hidden.
+            NotificationManager.Policy(
+                NotificationManager.Policy.PRIORITY_CATEGORY_ALARMS,
+                current.priorityCallSenders,
+                current.priorityMessageSenders,
+                HIDE_ALL_VISUAL_EFFECTS,
+            )
+        } else {
+            // Restore the user's normal priority list, no visual suppression from us.
+            val cats = state.originalPriorityCategories ?: current.priorityCategories
+            NotificationManager.Policy(
+                cats,
+                current.priorityCallSenders,
+                current.priorityMessageSenders,
+                0,
+            )
+        }
+        runCatching { nm.notificationPolicy = newPolicy }
+        return runCatching { nm.setInterruptionFilter(state.dndFilter) }.isSuccess
     }
 
-    fun releaseFocus(context: Context): Boolean {
+    suspend fun releaseFocus(context: Context, prefs: FocusPrefs, state: FocusState): Boolean {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return false
         if (!nm.isNotificationPolicyAccessGranted) return false
+
+        val origVisual = state.originalSuppressedVisualEffects
+        val origCats = state.originalPriorityCategories
+        if (origVisual != null && origCats != null) {
+            val current = nm.notificationPolicy
+            val restored = NotificationManager.Policy(
+                origCats,
+                current.priorityCallSenders,
+                current.priorityMessageSenders,
+                origVisual,
+            )
+            runCatching { nm.notificationPolicy = restored }
+            prefs.clearOriginalDndPolicy()
+        }
         return runCatching {
             nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
         }.isSuccess
-    }
-
-    private fun applyHidingPolicy(nm: NotificationManager) {
-        val current = nm.notificationPolicy
-        val newPolicy = NotificationManager.Policy(
-            current.priorityCategories,
-            current.priorityCallSenders,
-            current.priorityMessageSenders,
-            HIDE_ALL_VISUAL_EFFECTS,
-        )
-        runCatching { nm.notificationPolicy = newPolicy }
     }
 
     private const val HIDE_ALL_VISUAL_EFFECTS: Int =

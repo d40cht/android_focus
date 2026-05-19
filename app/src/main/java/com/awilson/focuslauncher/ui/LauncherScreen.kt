@@ -67,11 +67,13 @@ fun LauncherScreen(
     onWorkAppClick: (AppEntry) -> Unit,
     onReorderPersonal: (List<AppEntry>) -> Unit,
     onReorderWork: (List<AppEntry>) -> Unit,
-    onUnlockFullPhone: () -> Unit,
+    onPauseFocus: (PauseOption) -> Unit,
     onOpenSettings: () -> Unit,
     dndPermissionGranted: Boolean,
     onRequestDndPermission: () -> Unit,
 ) {
+    var showPauseSheet by remember { mutableStateOf(false) }
+
     val pages = remember(personalApps, workApps, workProfileAvailable, workUserHandle) {
         buildList {
             add(
@@ -169,7 +171,7 @@ fun LauncherScreen(
                         fontSize = 13.sp,
                     )
                 }
-                TextButton(onClick = onUnlockFullPhone) {
+                TextButton(onClick = { showPauseSheet = true }) {
                     Text(
                         text = "Unlock full phone",
                         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
@@ -180,6 +182,13 @@ fun LauncherScreen(
 
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    if (showPauseSheet) {
+        PauseSheet(
+            onDismiss = { showPauseSheet = false },
+            onPick = { option -> onPauseFocus(option) },
+        )
     }
 }
 

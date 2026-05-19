@@ -16,11 +16,14 @@ import com.awilson.focuslauncher.data.AppEntry
 import com.awilson.focuslauncher.data.FocusDndController
 import com.awilson.focuslauncher.data.FocusPrefs
 import com.awilson.focuslauncher.data.FocusState
+import com.awilson.focuslauncher.data.PauseAlarm
 import com.awilson.focuslauncher.data.WorkProfile
 import com.awilson.focuslauncher.ui.LauncherScreen
+import com.awilson.focuslauncher.ui.PauseOption
 import com.awilson.focuslauncher.ui.theme.FocusTheme
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -51,6 +54,9 @@ class LauncherActivity : ComponentActivity() {
                 dndFilter = NotificationManager.INTERRUPTION_FILTER_PRIORITY,
                 focusModeActive = true,
                 autoDismissNotifications = false,
+                originalSuppressedVisualEffects = null,
+                originalPriorityCategories = null,
+                pausedUntilEpochMs = 0L,
             ),
         )
 
@@ -74,7 +80,7 @@ class LauncherActivity : ComponentActivity() {
                     onReorderWork = { reordered ->
                         lifecycleScope.launch { prefs.setWorkGridApps(reordered) }
                     },
-                    onUnlockFullPhone = { unlockFullPhone(state.fallbackLauncherPackage) },
+                    onPauseFocus = { option -> pauseFocus(option, state.fallbackLauncherPackage) },
                     onOpenSettings = ::openSettings,
                     dndPermissionGranted = isDndPermissionGranted(),
                     onRequestDndPermission = ::openDndPermissionSettings,
@@ -87,10 +93,13 @@ class LauncherActivity : ComponentActivity() {
         super.onResume()
         val s = stateFlow.value
         if (s.onboardingComplete) {
-            // Re-arm focus mode every time the launcher resumes.
-            lifecycleScope.launch { prefs.setFocusModeActive(true) }
-            FocusDndController.applyFocus(this, s.dndFilter, s.autoDismissNotifications)
+            lifecycleScope.launch {
+                prefs.setPausedUntil(0L)
+                prefs.setFocusModeActive(true)
+                FocusDndController.applyFocus(this@LauncherActivity, prefs, prefs.state.first())
+            }
             // We're back in focus, the paused service (if running) is no longer needed.
+            PauseAlarm.cancel(this)
             FocusPausedService.stop(this)
         }
     }
@@ -121,17 +130,30 @@ class LauncherActivity : ComponentActivity() {
         workProfile.launch(entry.packageName)
     }
 
-    private fun unlockFullPhone(fallbackPackage: String?) {
-        lifecycleScope.launch { prefs.setFocusModeActive(false) }
-        FocusDndController.releaseFocus(this)
-        // Start the foreground service so the SCREEN_OFF receiver stays alive while user is away.
+    private fun pauseFocus(option: PauseOption, fallbackPackage: String?) {
+        val pausedUntil = when (option) {
+            PauseOption.SnapBack -> 0L
+            PauseOption.Indefinite -> Long.MAX_VALUE
+            is PauseOption.For -> System.currentTimeMillis() + option.durationMs
+            is PauseOption.UntilEpoch -> option.epochMs
+        }
+        lifecycleScope.launch {
+            prefs.setFocusModeActive(false)
+            prefs.setPausedUntil(pausedUntil)
+            FocusDndController.releaseFocus(this@LauncherActivity, prefs, prefs.state.first())
+        }
         FocusPausedService.start(this)
+        if (pausedUntil in 1..(Long.MAX_VALUE - 1)) {
+            PauseAlarm.schedule(this, pausedUntil)
+        } else {
+            // 0 (snap-back) or MAX_VALUE (indefinite) — no scheduled alarm
+            PauseAlarm.cancel(this)
+        }
         val intent = buildFallbackHomeIntent(fallbackPackage)
         try {
             startActivity(intent)
         } catch (t: Throwable) {
             Log.w("FocusLauncher", "Failed to launch fallback launcher; falling back to chooser", t)
-            // Last-resort: generic HOME chooser
             startActivity(
                 Intent(Intent.ACTION_MAIN)
                     .addCategory(Intent.CATEGORY_HOME)

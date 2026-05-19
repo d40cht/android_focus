@@ -62,6 +62,14 @@
                 android:value="Keeps the Focus process alive while the user is in 'Unlock full phone' mode so the next screen-off can re-arm focus mode and bring the launcher back. Personal-use launcher app." />
         </service>
 
+        <receiver
+            android:name=".PauseEndReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.awilson.focuslauncher.action.PAUSE_END" />
+            </intent-filter>
+        </receiver>
+
     </application>
 
 </manifest>
