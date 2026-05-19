@@ -109,7 +109,8 @@ class FocusPausedService : Service() {
                 startActivity(
                     Intent(applicationContext, LauncherActivity::class.java)
                         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                        .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
+                        .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        .putExtra(LauncherActivity.EXTRA_FORCE_RESUME, true),
                 )
             } catch (t: Throwable) {
                 Log.w(TAG, "Couldn't bring LauncherActivity to front from paused service", t)
@@ -141,7 +142,8 @@ class FocusPausedService : Service() {
             0,
             Intent(this, LauncherActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
+                .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                .putExtra(LauncherActivity.EXTRA_FORCE_RESUME, true),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
         return Notification.Builder(this, CHANNEL_ID)

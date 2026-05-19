@@ -58,6 +58,31 @@ object FocusDndController {
         return runCatching { nm.setInterruptionFilter(state.dndFilter) }.isSuccess
     }
 
+    /**
+     * Soft release: turns DND off and restores user's priorityCategories + zero visualEffects,
+     * but keeps the snapshot in prefs so the next applyFocus has the user's original values.
+     * Used by LauncherActivity.onPause so DND is only on while the launcher is foreground.
+     */
+    suspend fun pauseDnd(context: Context, state: FocusState): Boolean {
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return false
+        if (!nm.isNotificationPolicyAccessGranted) return false
+
+        val origCats = state.originalPriorityCategories
+        if (origCats != null) {
+            val current = nm.notificationPolicy
+            val restored = NotificationManager.Policy(
+                origCats,
+                current.priorityCallSenders,
+                current.priorityMessageSenders,
+                0,
+            )
+            runCatching { nm.notificationPolicy = restored }
+        }
+        return runCatching {
+            nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL)
+        }.isSuccess
+    }
+
     suspend fun releaseFocus(context: Context, prefs: FocusPrefs, state: FocusState): Boolean {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return false
         if (!nm.isNotificationPolicyAccessGranted) return false

@@ -33,7 +33,8 @@ class PauseEndReceiver : BroadcastReceiver() {
                     context.startActivity(
                         Intent(context.applicationContext, LauncherActivity::class.java)
                             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
+                            .addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                            .putExtra(LauncherActivity.EXTRA_FORCE_RESUME, true),
                     )
                 } catch (_: Throwable) {
                     // OK if we can't bring it to front; the next lock/unlock will land on us anyway.

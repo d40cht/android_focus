@@ -29,6 +29,10 @@ import kotlinx.coroutines.launch
 
 class LauncherActivity : ComponentActivity() {
 
+    companion object {
+        const val EXTRA_FORCE_RESUME = "com.awilson.focuslauncher.extra.FORCE_RESUME"
+    }
+
     private lateinit var prefs: FocusPrefs
     private lateinit var workProfile: WorkProfile
     private lateinit var stateFlow: StateFlow<FocusState>
@@ -93,18 +97,50 @@ class LauncherActivity : ComponentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     override fun onResume() {
         super.onResume()
         val s = stateFlow.value
-        if (s.onboardingComplete) {
-            lifecycleScope.launch {
-                prefs.setPausedUntil(0L)
-                prefs.setFocusModeActive(true)
-                FocusDndController.applyFocus(this@LauncherActivity, prefs, prefs.state.first())
+        if (!s.onboardingComplete) return
+
+        val forceResume = intent?.getBooleanExtra(EXTRA_FORCE_RESUME, false) == true
+        intent?.removeExtra(EXTRA_FORCE_RESUME)
+
+        // If we're in an active timed/indefinite pause and the user didn't explicitly ask to
+        // resume (via the paused notification or the alarm), bounce to the fallback launcher.
+        // Otherwise pressing HOME accidentally while in pause snaps us back into focus mode.
+        if (!forceResume && s.pausedUntilEpochMs != 0L) {
+            val stillPaused = s.pausedUntilEpochMs == Long.MAX_VALUE ||
+                System.currentTimeMillis() < s.pausedUntilEpochMs
+            if (stillPaused) {
+                startActivity(buildFallbackHomeIntent(s.fallbackLauncherPackage))
+                return
             }
-            // We're back in focus, the paused service (if running) is no longer needed.
-            PauseAlarm.cancel(this)
-            FocusPausedService.stop(this)
+        }
+
+        lifecycleScope.launch {
+            prefs.setPausedUntil(0L)
+            prefs.setFocusModeActive(true)
+            FocusDndController.applyFocus(this@LauncherActivity, prefs, prefs.state.first())
+        }
+        PauseAlarm.cancel(this)
+        FocusPausedService.stop(this)
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Release DND whenever the launcher loses focus, so notifications are visible while you're
+        // inside an app you launched from the grid (or in our Settings, or anywhere else).
+        // Note: onResume re-applies DND when the launcher comes back. The snapshot stays intact.
+        val s = stateFlow.value
+        if (s.onboardingComplete && s.focusModeActive) {
+            lifecycleScope.launch {
+                FocusDndController.pauseDnd(this@LauncherActivity, prefs.state.first())
+            }
         }
     }
 
