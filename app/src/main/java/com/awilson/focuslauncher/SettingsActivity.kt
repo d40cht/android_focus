@@ -207,6 +207,17 @@ private fun MenuScreen(
     )
 
     SettingsRow(
+        title = "Allow apps through Focus",
+        subtitle = "Opens Android's DND app exceptions — add apps you still want to see (e.g. WhatsApp from family)",
+        onClick = {
+            context.startActivity(
+                android.content.Intent(android.provider.Settings.ACTION_ZEN_MODE_PRIORITY_SETTINGS)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        },
+    )
+
+    SettingsRow(
         title = "Re-run onboarding",
         subtitle = "Start the setup flow again",
         onClick = onRerunOnboarding,
