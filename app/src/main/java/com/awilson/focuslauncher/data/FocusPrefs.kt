@@ -30,6 +30,9 @@ data class FocusState(
     // Long-pause end time in epoch ms. 0 = snap-back mode (re-arm on next screen off).
     // Long.MAX_VALUE = indefinite pause. Any other positive value = scheduled re-arm time.
     val pausedUntilEpochMs: Long,
+    // Last hour:minute used in the "Until time" picker, so we can prefill it next time.
+    val lastPauseUntilHour: Int?,
+    val lastPauseUntilMinute: Int?,
 )
 
 class FocusPrefs(private val context: Context) {
@@ -45,6 +48,8 @@ class FocusPrefs(private val context: Context) {
         val origSuppressedVisualEffects = intPreferencesKey("orig_suppressed_visual_effects")
         val origPriorityCategories = intPreferencesKey("orig_priority_categories")
         val pausedUntil = longPreferencesKey("paused_until_epoch_ms")
+        val lastPauseUntilHour = intPreferencesKey("last_pause_until_hour")
+        val lastPauseUntilMinute = intPreferencesKey("last_pause_until_minute")
     }
 
     val state: Flow<FocusState> = context.focusDataStore.data.map { prefs ->
@@ -59,6 +64,8 @@ class FocusPrefs(private val context: Context) {
             originalSuppressedVisualEffects = prefs[Keys.origSuppressedVisualEffects],
             originalPriorityCategories = prefs[Keys.origPriorityCategories],
             pausedUntilEpochMs = prefs[Keys.pausedUntil] ?: 0L,
+            lastPauseUntilHour = prefs[Keys.lastPauseUntilHour],
+            lastPauseUntilMinute = prefs[Keys.lastPauseUntilMinute],
         )
     }
 
@@ -113,6 +120,13 @@ class FocusPrefs(private val context: Context) {
     suspend fun setPausedUntil(epochMs: Long) {
         context.focusDataStore.edit { prefs ->
             if (epochMs == 0L) prefs.remove(Keys.pausedUntil) else prefs[Keys.pausedUntil] = epochMs
+        }
+    }
+
+    suspend fun setLastPauseUntilTime(hour: Int, minute: Int) {
+        context.focusDataStore.edit { prefs ->
+            prefs[Keys.lastPauseUntilHour] = hour
+            prefs[Keys.lastPauseUntilMinute] = minute
         }
     }
 

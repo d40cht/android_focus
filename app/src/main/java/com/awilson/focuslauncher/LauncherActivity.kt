@@ -57,6 +57,8 @@ class LauncherActivity : ComponentActivity() {
                 originalSuppressedVisualEffects = null,
                 originalPriorityCategories = null,
                 pausedUntilEpochMs = 0L,
+                lastPauseUntilHour = null,
+                lastPauseUntilMinute = null,
             ),
         )
 
@@ -81,6 +83,8 @@ class LauncherActivity : ComponentActivity() {
                         lifecycleScope.launch { prefs.setWorkGridApps(reordered) }
                     },
                     onPauseFocus = { option -> pauseFocus(option, state.fallbackLauncherPackage) },
+                    initialPauseHour = state.lastPauseUntilHour,
+                    initialPauseMinute = state.lastPauseUntilMinute,
                     onOpenSettings = ::openSettings,
                     dndPermissionGranted = isDndPermissionGranted(),
                     onRequestDndPermission = ::openDndPermissionSettings,
@@ -140,6 +144,9 @@ class LauncherActivity : ComponentActivity() {
         lifecycleScope.launch {
             prefs.setFocusModeActive(false)
             prefs.setPausedUntil(pausedUntil)
+            if (option is PauseOption.UntilEpoch) {
+                prefs.setLastPauseUntilTime(option.hour, option.minute)
+            }
             FocusDndController.releaseFocus(this@LauncherActivity, prefs, prefs.state.first())
         }
         FocusPausedService.start(this)

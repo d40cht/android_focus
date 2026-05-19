@@ -68,6 +68,8 @@ fun LauncherScreen(
     onReorderPersonal: (List<AppEntry>) -> Unit,
     onReorderWork: (List<AppEntry>) -> Unit,
     onPauseFocus: (PauseOption) -> Unit,
+    initialPauseHour: Int?,
+    initialPauseMinute: Int?,
     onOpenSettings: () -> Unit,
     dndPermissionGranted: Boolean,
     onRequestDndPermission: () -> Unit,
@@ -111,21 +113,21 @@ fun LauncherScreen(
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Spacer(Modifier.height(56.dp))
+            Spacer(Modifier.height(40.dp))
 
             ClockDisplay()
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(12.dp))
 
             Text(
                 text = "What did you come here to do?",
                 color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
-                fontSize = 16.sp,
+                fontSize = 14.sp,
                 fontWeight = FontWeight.Light,
                 textAlign = TextAlign.Center,
             )
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
 
             if (!dndPermissionGranted) {
                 DndBanner(onClick = onRequestDndPermission)
@@ -188,6 +190,8 @@ fun LauncherScreen(
         PauseSheet(
             onDismiss = { showPauseSheet = false },
             onPick = { option -> onPauseFocus(option) },
+            initialHour = initialPauseHour,
+            initialMinute = initialPauseMinute,
         )
     }
 }
@@ -394,14 +398,14 @@ private fun ClockDisplay() {
     Text(
         text = now.format(timeFormatter),
         color = MaterialTheme.colorScheme.onBackground,
-        fontSize = 64.sp,
+        fontSize = 44.sp,
         fontWeight = FontWeight.Light,
         textAlign = TextAlign.Center,
     )
     Text(
         text = now.format(dateFormatter),
         color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.65f),
-        fontSize = 14.sp,
+        fontSize = 12.sp,
         fontWeight = FontWeight.Light,
         textAlign = TextAlign.Center,
     )

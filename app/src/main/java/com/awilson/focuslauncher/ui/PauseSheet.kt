@@ -31,7 +31,7 @@ import java.util.Calendar
 sealed class PauseOption {
     data object SnapBack : PauseOption()
     data class For(val durationMs: Long) : PauseOption()
-    data class UntilEpoch(val epochMs: Long) : PauseOption()
+    data class UntilEpoch(val epochMs: Long, val hour: Int, val minute: Int) : PauseOption()
     data object Indefinite : PauseOption()
 }
 
@@ -40,6 +40,8 @@ sealed class PauseOption {
 fun PauseSheet(
     onDismiss: () -> Unit,
     onPick: (PauseOption) -> Unit,
+    initialHour: Int? = null,
+    initialMinute: Int? = null,
 ) {
     val sheetState = rememberModalBottomSheetState()
     val scope = rememberCoroutineScope()
@@ -74,6 +76,14 @@ fun PauseSheet(
             PauseRow("Until next lock", "Snap back to Focus on the next screen-off") {
                 dismissThen { onPick(PauseOption.SnapBack) }
             }
+            val untilSubtitle = if (initialHour != null && initialMinute != null) {
+                "Last used: ${formatHourMinute(initialHour, initialMinute)}"
+            } else {
+                "Pick when to resume"
+            }
+            PauseRow("Until a time...", untilSubtitle) {
+                showTimePicker = true
+            }
             PauseRow("For 1 hour", "Auto-resume Focus after 60 minutes") {
                 dismissThen { onPick(PauseOption.For(60 * 60 * 1000L)) }
             }
@@ -83,9 +93,6 @@ fun PauseSheet(
             PauseRow("For 4 hours", "Auto-resume after 4 hours") {
                 dismissThen { onPick(PauseOption.For(4 * 60 * 60 * 1000L)) }
             }
-            PauseRow("Until a time...", "Pick when to resume") {
-                showTimePicker = true
-            }
             PauseRow("Indefinitely", "Stay on the full phone until you come back to Focus") {
                 dismissThen { onPick(PauseOption.Indefinite) }
             }
@@ -94,13 +101,31 @@ fun PauseSheet(
 
     if (showTimePicker) {
         UntilTimePicker(
+            initialHour = initialHour,
+            initialMinute = initialMinute,
             onCancel = { showTimePicker = false },
             onConfirm = { hour, minute ->
                 showTimePicker = false
-                dismissThen { onPick(PauseOption.UntilEpoch(epochForHourMinuteToday(hour, minute))) }
+                dismissThen {
+                    onPick(
+                        PauseOption.UntilEpoch(
+                            epochMs = epochForHourMinuteToday(hour, minute),
+                            hour = hour,
+                            minute = minute,
+                        ),
+                    )
+                }
             },
         )
     }
+}
+
+private fun formatHourMinute(hour: Int, minute: Int): String {
+    val cal = Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, hour)
+        set(Calendar.MINUTE, minute)
+    }
+    return java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(cal.time)
 }
 
 @Composable
@@ -124,11 +149,16 @@ private fun PauseRow(title: String, subtitle: String, onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun UntilTimePicker(onCancel: () -> Unit, onConfirm: (Int, Int) -> Unit) {
+private fun UntilTimePicker(
+    initialHour: Int?,
+    initialMinute: Int?,
+    onCancel: () -> Unit,
+    onConfirm: (Int, Int) -> Unit,
+) {
     val now = Calendar.getInstance()
     val state = rememberTimePickerState(
-        initialHour = now.get(Calendar.HOUR_OF_DAY),
-        initialMinute = now.get(Calendar.MINUTE),
+        initialHour = initialHour ?: now.get(Calendar.HOUR_OF_DAY),
+        initialMinute = initialMinute ?: now.get(Calendar.MINUTE),
         is24Hour = false,
     )
     AlertDialog(
