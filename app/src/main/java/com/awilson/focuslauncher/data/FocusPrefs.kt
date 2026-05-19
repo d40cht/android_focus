@@ -18,6 +18,7 @@ data class FocusState(
     val onboardingComplete: Boolean,
     val fallbackLauncherPackage: String?,
     val gridApps: List<AppEntry>,
+    val workGridApps: List<AppEntry>,
     val dndFilter: Int,
     val focusModeActive: Boolean,
     val autoDismissNotifications: Boolean,
@@ -29,6 +30,7 @@ class FocusPrefs(private val context: Context) {
         val onboardingComplete = booleanPreferencesKey("onboarding_complete")
         val fallbackLauncher = stringPreferencesKey("fallback_launcher")
         val gridApps = stringPreferencesKey("grid_apps")
+        val workGridApps = stringPreferencesKey("work_grid_apps")
         val dndFilter = intPreferencesKey("dnd_filter")
         val focusModeActive = booleanPreferencesKey("focus_mode_active")
         val autoDismiss = booleanPreferencesKey("auto_dismiss_notifications")
@@ -39,6 +41,7 @@ class FocusPrefs(private val context: Context) {
             onboardingComplete = prefs[Keys.onboardingComplete] == true,
             fallbackLauncherPackage = prefs[Keys.fallbackLauncher],
             gridApps = decodeGrid(prefs[Keys.gridApps].orEmpty()),
+            workGridApps = decodeGrid(prefs[Keys.workGridApps].orEmpty()),
             dndFilter = prefs[Keys.dndFilter] ?: NotificationManager.INTERRUPTION_FILTER_PRIORITY,
             focusModeActive = prefs[Keys.focusModeActive] != false,
             autoDismissNotifications = prefs[Keys.autoDismiss] == true,
@@ -58,6 +61,12 @@ class FocusPrefs(private val context: Context) {
     suspend fun setGridApps(apps: List<AppEntry>) {
         context.focusDataStore.edit { prefs ->
             prefs[Keys.gridApps] = encodeGrid(apps)
+        }
+    }
+
+    suspend fun setWorkGridApps(apps: List<AppEntry>) {
+        context.focusDataStore.edit { prefs ->
+            prefs[Keys.workGridApps] = encodeGrid(apps)
         }
     }
 

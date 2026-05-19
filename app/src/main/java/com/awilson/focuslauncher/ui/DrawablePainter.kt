@@ -1,8 +1,11 @@
 package com.awilson.focuslauncher.ui
 
 import android.content.Context
+import android.content.pm.LauncherApps
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
+import android.os.Process
+import android.os.UserHandle
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Size
@@ -30,13 +33,28 @@ internal class DrawablePainter(private val drawable: Drawable) : Painter() {
 }
 
 @Composable
-internal fun rememberAppIcon(packageName: String): Painter? {
+internal fun rememberAppIcon(packageName: String, userHandle: UserHandle? = null): Painter? {
     val context = LocalContext.current
-    return remember(packageName) { loadAppIcon(context, packageName) }
+    return remember(packageName, userHandle) { loadAppIcon(context, packageName, userHandle) }
 }
 
-internal fun loadAppIcon(context: Context, packageName: String): Painter? = try {
-    DrawablePainter(context.packageManager.getApplicationIcon(packageName))
-} catch (_: PackageManager.NameNotFoundException) {
-    null
+internal fun loadAppIcon(
+    context: Context,
+    packageName: String,
+    userHandle: UserHandle? = null,
+): Painter? {
+    val targetHandle = userHandle ?: Process.myUserHandle()
+    if (targetHandle != Process.myUserHandle()) {
+        // Work or other-profile package — load via LauncherApps so we don't depend on the package
+        // being installed in our personal profile.
+        val la = context.getSystemService(LauncherApps::class.java) ?: return null
+        val activity = la.getActivityList(packageName, targetHandle).firstOrNull() ?: return null
+        val drawable = runCatching { activity.getBadgedIcon(0) }.getOrNull() ?: return null
+        return DrawablePainter(drawable)
+    }
+    return try {
+        DrawablePainter(context.packageManager.getApplicationIcon(packageName))
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
+    }
 }

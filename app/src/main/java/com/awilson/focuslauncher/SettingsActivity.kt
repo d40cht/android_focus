@@ -40,6 +40,8 @@ import androidx.lifecycle.lifecycleScope
 import com.awilson.focuslauncher.data.AppCatalog
 import com.awilson.focuslauncher.data.AppEntry
 import com.awilson.focuslauncher.data.FocusPrefs
+import com.awilson.focuslauncher.data.LaunchableApp
+import com.awilson.focuslauncher.data.WorkProfile
 import com.awilson.focuslauncher.ui.AppPickerRow
 import com.awilson.focuslauncher.ui.AppPickerSearch
 import com.awilson.focuslauncher.ui.SortMode
@@ -53,6 +55,7 @@ private const val GRID_MAX = 28
 private sealed class Screen {
     data object Menu : Screen()
     data object Grid : Screen()
+    data object WorkGrid : Screen()
     data object Fallback : Screen()
     data object DndMode : Screen()
 }
@@ -97,6 +100,7 @@ private fun SettingsRoot(
     val state by prefs.state.collectAsState(initial = null)
     var screen by remember { mutableStateOf<Screen>(Screen.Menu) }
     val s = state ?: return
+    val context = androidx.compose.ui.platform.LocalContext.current
 
     Column(
         modifier = Modifier
@@ -108,6 +112,7 @@ private fun SettingsRoot(
             Screen.Menu -> MenuScreen(
                 state = s,
                 onConfigureGrid = { screen = Screen.Grid },
+                onConfigureWorkGrid = { screen = Screen.WorkGrid },
                 onPickFallback = { screen = Screen.Fallback },
                 onDndMode = { screen = Screen.DndMode },
                 onRerunOnboarding = onRerunOnboarding,
@@ -116,8 +121,26 @@ private fun SettingsRoot(
             Screen.Grid -> GridSubscreen(
                 prefs = prefs,
                 existing = s.gridApps,
+                listApps = { AppCatalog.launchableApps(it) },
+                listByUsage = { AppCatalog.launchableAppsByUsage(it) },
+                onSave = { picked -> prefs.setGridApps(picked) },
                 onBack = { screen = Screen.Menu },
+                title = "Configure personal grid",
             )
+            Screen.WorkGrid -> {
+                val wp = remember { WorkProfile(context.applicationContext) }
+                GridSubscreen(
+                    prefs = prefs,
+                    existing = s.workGridApps,
+                    listApps = { wp.launchableApps() },
+                    listByUsage = { wp.launchableApps() }, // Usage stats are personal-profile-only
+                    onSave = { picked -> prefs.setWorkGridApps(picked) },
+                    onBack = { screen = Screen.Menu },
+                    title = "Configure work grid",
+                    forceAlphabetical = true,
+                    userHandle = wp.handle,
+                )
+            }
             Screen.Fallback -> FallbackSubscreen(
                 prefs = prefs,
                 currentFallback = s.fallbackLauncherPackage,
@@ -136,6 +159,7 @@ private fun SettingsRoot(
 private fun MenuScreen(
     state: com.awilson.focuslauncher.data.FocusState,
     onConfigureGrid: () -> Unit,
+    onConfigureWorkGrid: () -> Unit,
     onPickFallback: () -> Unit,
     onDndMode: () -> Unit,
     onRerunOnboarding: () -> Unit,
@@ -147,10 +171,19 @@ private fun MenuScreen(
     SettingsHeader("Settings")
 
     SettingsRow(
-        title = "Configure grid",
-        subtitle = "${state.gridApps.size} app${if (state.gridApps.size == 1) "" else "s"} on the focus screen",
+        title = "Configure personal grid",
+        subtitle = "${state.gridApps.size} app${if (state.gridApps.size == 1) "" else "s"} on the personal page",
         onClick = onConfigureGrid,
     )
+
+    val workProfile = remember { WorkProfile(context.applicationContext) }
+    if (workProfile.handle != null) {
+        SettingsRow(
+            title = "Configure work grid",
+            subtitle = "${state.workGridApps.size} app${if (state.workGridApps.size == 1) "" else "s"} on the work page",
+            onClick = onConfigureWorkGrid,
+        )
+    }
 
     SettingsRow(
         title = "Fallback launcher",
@@ -214,23 +247,33 @@ private fun HideNotificationsRow(
 private fun ColumnScope.GridSubscreen(
     prefs: FocusPrefs,
     existing: List<AppEntry>,
+    listApps: (android.content.Context) -> List<LaunchableApp>,
+    listByUsage: (android.content.Context) -> List<LaunchableApp>,
+    onSave: suspend (List<AppEntry>) -> Unit,
     onBack: () -> Unit,
+    title: String,
+    forceAlphabetical: Boolean = false,
+    userHandle: android.os.UserHandle? = null,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var usageGranted by remember { mutableStateOf(AppCatalog.hasUsageStatsPermission(context)) }
-    val alphabetical = remember { AppCatalog.launchableApps(context) }
-    var byUsage by remember { mutableStateOf(AppCatalog.launchableAppsByUsage(context)) }
-    var sortMode by remember { mutableStateOf(if (usageGranted) SortMode.Usage else SortMode.Alphabetical) }
+    var usageGranted by remember {
+        mutableStateOf(!forceAlphabetical && AppCatalog.hasUsageStatsPermission(context))
+    }
+    val alphabetical = remember { listApps(context) }
+    var byUsage by remember { mutableStateOf(listByUsage(context)) }
+    var sortMode by remember {
+        mutableStateOf(if (usageGranted) SortMode.Usage else SortMode.Alphabetical)
+    }
     var query by remember { mutableStateOf("") }
 
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
     androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+            if (!forceAlphabetical && event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
                 val granted = AppCatalog.hasUsageStatsPermission(context)
                 if (granted != usageGranted) {
                     usageGranted = granted
-                    byUsage = AppCatalog.launchableAppsByUsage(context)
+                    byUsage = listByUsage(context)
                     if (granted) sortMode = SortMode.Usage
                 }
             }
@@ -246,21 +289,23 @@ private fun ColumnScope.GridSubscreen(
         filterAndSort(query, sortMode, alphabetical, byUsage)
     }
 
-    SettingsHeader("Configure grid")
+    SettingsHeader(title)
     Text(
-        text = "Pick apps to show on your focus screen. Up to $GRID_MAX.",
+        text = "Pick apps to show on this page. Up to $GRID_MAX.",
         color = MaterialTheme.colorScheme.onBackground,
         fontSize = 13.sp,
     )
 
     AppPickerSearch(query = query, onQueryChange = { query = it })
 
-    SortToggle(
-        current = sortMode,
-        usageAvailable = usageGranted,
-        onChange = { sortMode = it },
-        onGrantUsage = { AppCatalog.openUsageAccessSettings(context) },
-    )
+    if (!forceAlphabetical) {
+        SortToggle(
+            current = sortMode,
+            usageAvailable = usageGranted,
+            onChange = { sortMode = it },
+            onGrantUsage = { AppCatalog.openUsageAccessSettings(context) },
+        )
+    }
 
     LazyColumn(modifier = Modifier.fillMaxWidth().weight(1f)) {
         items(displayed, key = { it.packageName }) { app ->
@@ -275,6 +320,7 @@ private fun ColumnScope.GridSubscreen(
                         selected.remove(app.packageName)
                     }
                 },
+                userHandle = userHandle,
             )
         }
     }
@@ -288,7 +334,7 @@ private fun ColumnScope.GridSubscreen(
                     AppEntry(packageName = pkg, label = labelByPkg[pkg] ?: pkg)
                 }
                 (context as ComponentActivity).lifecycleScope.launch {
-                    prefs.setGridApps(picked)
+                    onSave(picked)
                     onBack()
                 }
             },

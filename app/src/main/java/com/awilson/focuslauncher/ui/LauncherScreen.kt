@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,6 +17,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -45,35 +49,55 @@ import sh.calvin.reorderable.rememberReorderableLazyGridState
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
+private data class LauncherPage(
+    val label: String,
+    val apps: List<AppEntry>,
+    val onAppClick: (AppEntry) -> Unit,
+    val onReorder: (List<AppEntry>) -> Unit,
+    val userHandle: android.os.UserHandle?,
+)
+
 @Composable
 fun LauncherScreen(
-    apps: List<AppEntry>,
-    onAppClick: (AppEntry) -> Unit,
-    onReorder: (List<AppEntry>) -> Unit,
+    personalApps: List<AppEntry>,
+    workApps: List<AppEntry>,
+    workProfileAvailable: Boolean,
+    workUserHandle: android.os.UserHandle?,
+    onPersonalAppClick: (AppEntry) -> Unit,
+    onWorkAppClick: (AppEntry) -> Unit,
+    onReorderPersonal: (List<AppEntry>) -> Unit,
+    onReorderWork: (List<AppEntry>) -> Unit,
     onUnlockFullPhone: () -> Unit,
     onOpenSettings: () -> Unit,
     dndPermissionGranted: Boolean,
     onRequestDndPermission: () -> Unit,
 ) {
-    val orderedApps = remember { mutableStateListOf<AppEntry>().apply { addAll(apps) } }
-
-    // Re-sync from prop when the *set* of packages changes (Settings added/removed an app).
-    // Ignore reorders we've just persisted, since those round-trip identical sets.
-    LaunchedEffect(apps.map { it.packageName }.toSet()) {
-        val currentPkgs = orderedApps.map { it.packageName }.toSet()
-        val newPkgs = apps.map { it.packageName }.toSet()
-        if (currentPkgs != newPkgs) {
-            orderedApps.clear()
-            orderedApps.addAll(apps)
+    val pages = remember(personalApps, workApps, workProfileAvailable, workUserHandle) {
+        buildList {
+            add(
+                LauncherPage(
+                    label = "Personal",
+                    apps = personalApps,
+                    onAppClick = onPersonalAppClick,
+                    onReorder = onReorderPersonal,
+                    userHandle = null,
+                ),
+            )
+            if (workProfileAvailable) {
+                add(
+                    LauncherPage(
+                        label = "Work",
+                        apps = workApps,
+                        onAppClick = onWorkAppClick,
+                        onReorder = onReorderWork,
+                        userHandle = workUserHandle,
+                    ),
+                )
+            }
         }
     }
 
-    val gridState = rememberLazyGridState()
-    val haptic = LocalHapticFeedback.current
-    val reorderState = rememberReorderableLazyGridState(gridState) { from, to ->
-        val movedItem = orderedApps.removeAt(from.index)
-        orderedApps.add(to.index, movedItem)
-    }
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { pages.size })
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -99,54 +123,41 @@ fun LauncherScreen(
                 textAlign = TextAlign.Center,
             )
 
-            Spacer(Modifier.height(32.dp))
+            Spacer(Modifier.height(16.dp))
 
             if (!dndPermissionGranted) {
                 DndBanner(onClick = onRequestDndPermission)
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(16.dp))
             }
 
-            LazyVerticalGrid(
-                state = gridState,
-                columns = GridCells.Fixed(columnsFor(orderedApps.size)),
-                contentPadding = PaddingValues(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-            ) {
-                items(
-                    count = orderedApps.size,
-                    key = { i -> orderedApps[i].packageName },
-                ) { index ->
-                    val entry = orderedApps[index]
-                    ReorderableItem(
-                        state = reorderState,
-                        key = entry.packageName,
-                    ) { isDragging ->
-                        AppTile(
-                            entry = entry,
-                            isDragging = isDragging,
-                            onClick = { onAppClick(entry) },
-                            dragModifier = Modifier.longPressDraggableHandle(
-                                onDragStarted = {
-                                    haptic.performHapticFeedback(
-                                        androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress
-                                    )
-                                },
-                                onDragStopped = {
-                                    onReorder(orderedApps.toList())
-                                },
-                            ),
-                        )
-                    }
+            // Page label + dots indicator. Only show the dots if there's more than one page.
+            if (pages.size > 1) {
+                PageHeader(pageLabel = pages[pagerState.currentPage].label, pages = pages.size, current = pagerState.currentPage)
+                Spacer(Modifier.height(4.dp))
+            } else {
+                Spacer(Modifier.height(8.dp))
+            }
+
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            ) { pageIndex ->
+                val page = pages[pageIndex]
+                if (page.apps.isEmpty()) {
+                    EmptyGridState(label = page.label)
+                } else {
+                    AppGrid(
+                        apps = page.apps,
+                        userHandle = page.userHandle,
+                        onAppClick = page.onAppClick,
+                        onReorder = page.onReorder,
+                    )
                 }
             }
 
             Spacer(Modifier.height(16.dp))
 
-            androidx.compose.foundation.layout.Row(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
@@ -173,13 +184,113 @@ fun LauncherScreen(
 }
 
 @Composable
+private fun PageHeader(pageLabel: String, pages: Int, current: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = pageLabel,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+        )
+        Spacer(Modifier.size(12.dp))
+        repeat(pages) { i ->
+            Box(
+                modifier = Modifier
+                    .size(6.dp)
+                    .clip(CircleShape)
+                    .background(
+                        if (i == current) MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+                        else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.2f),
+                    ),
+            )
+            if (i != pages - 1) Spacer(Modifier.size(6.dp))
+        }
+    }
+}
+
+@Composable
+private fun AppGrid(
+    apps: List<AppEntry>,
+    userHandle: android.os.UserHandle?,
+    onAppClick: (AppEntry) -> Unit,
+    onReorder: (List<AppEntry>) -> Unit,
+) {
+    val orderedApps = remember { mutableStateListOf<AppEntry>().apply { addAll(apps) } }
+
+    LaunchedEffect(apps.map { it.packageName }.toSet()) {
+        val currentPkgs = orderedApps.map { it.packageName }.toSet()
+        val newPkgs = apps.map { it.packageName }.toSet()
+        if (currentPkgs != newPkgs) {
+            orderedApps.clear()
+            orderedApps.addAll(apps)
+        }
+    }
+
+    val gridState = rememberLazyGridState()
+    val haptic = LocalHapticFeedback.current
+    val reorderState = rememberReorderableLazyGridState(gridState) { from, to ->
+        val movedItem = orderedApps.removeAt(from.index)
+        orderedApps.add(to.index, movedItem)
+    }
+
+    LazyVerticalGrid(
+        state = gridState,
+        columns = GridCells.Fixed(columnsFor(orderedApps.size)),
+        contentPadding = PaddingValues(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        items(
+            count = orderedApps.size,
+            key = { i -> orderedApps[i].packageName },
+        ) { index ->
+            val entry = orderedApps[index]
+            ReorderableItem(state = reorderState, key = entry.packageName) { isDragging ->
+                AppTile(
+                    entry = entry,
+                    userHandle = userHandle,
+                    isDragging = isDragging,
+                    onClick = { onAppClick(entry) },
+                    dragModifier = Modifier.longPressDraggableHandle(
+                        onDragStarted = {
+                            haptic.performHapticFeedback(
+                                androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress,
+                            )
+                        },
+                        onDragStopped = { onReorder(orderedApps.toList()) },
+                    ),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyGridState(label: String) {
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text(
+            text = "No $label apps yet — add some from Settings.",
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f),
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
 private fun AppTile(
     entry: AppEntry,
+    userHandle: android.os.UserHandle?,
     isDragging: Boolean,
     onClick: () -> Unit,
     dragModifier: Modifier,
 ) {
-    val icon = rememberAppIcon(entry.packageName)
+    val icon = rememberAppIcon(entry.packageName, userHandle)
     val scale = if (isDragging) 1.1f else 1f
 
     Column(
@@ -266,7 +377,6 @@ private fun ClockDisplay() {
     LaunchedEffect(Unit) {
         while (true) {
             now = LocalDateTime.now()
-            // Sleep until just past the next minute boundary so the clock ticks promptly.
             val msToNextMinute = 60_000L - (System.currentTimeMillis() % 60_000L) + 50L
             delay(msToNextMinute)
         }

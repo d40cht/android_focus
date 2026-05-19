@@ -16,6 +16,7 @@ import com.awilson.focuslauncher.data.AppEntry
 import com.awilson.focuslauncher.data.FocusDndController
 import com.awilson.focuslauncher.data.FocusPrefs
 import com.awilson.focuslauncher.data.FocusState
+import com.awilson.focuslauncher.data.WorkProfile
 import com.awilson.focuslauncher.ui.LauncherScreen
 import com.awilson.focuslauncher.ui.theme.FocusTheme
 import kotlinx.coroutines.flow.SharingStarted
@@ -26,11 +27,13 @@ import kotlinx.coroutines.launch
 class LauncherActivity : ComponentActivity() {
 
     private lateinit var prefs: FocusPrefs
+    private lateinit var workProfile: WorkProfile
     private lateinit var stateFlow: StateFlow<FocusState>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prefs = FocusPrefs(applicationContext)
+        workProfile = WorkProfile(applicationContext)
 
         // Back button on the home screen should do nothing.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -44,6 +47,7 @@ class LauncherActivity : ComponentActivity() {
                 onboardingComplete = false,
                 fallbackLauncherPackage = null,
                 gridApps = emptyList(),
+                workGridApps = emptyList(),
                 dndFilter = NotificationManager.INTERRUPTION_FILTER_PRIORITY,
                 focusModeActive = true,
                 autoDismissNotifications = false,
@@ -58,10 +62,17 @@ class LauncherActivity : ComponentActivity() {
                     return@FocusTheme
                 }
                 LauncherScreen(
-                    apps = state.gridApps,
-                    onAppClick = ::launchApp,
-                    onReorder = { reordered ->
+                    personalApps = state.gridApps,
+                    workApps = state.workGridApps,
+                    workProfileAvailable = workProfile.isAvailable,
+                    workUserHandle = workProfile.handle,
+                    onPersonalAppClick = ::launchPersonalApp,
+                    onWorkAppClick = ::launchWorkApp,
+                    onReorderPersonal = { reordered ->
                         lifecycleScope.launch { prefs.setGridApps(reordered) }
+                    },
+                    onReorderWork = { reordered ->
+                        lifecycleScope.launch { prefs.setWorkGridApps(reordered) }
                     },
                     onUnlockFullPhone = { unlockFullPhone(state.fallbackLauncherPackage) },
                     onOpenSettings = ::openSettings,
@@ -100,10 +111,14 @@ class LauncherActivity : ComponentActivity() {
         startActivity(Intent(this, SettingsActivity::class.java))
     }
 
-    private fun launchApp(entry: AppEntry) {
+    private fun launchPersonalApp(entry: AppEntry) {
         val launchIntent = packageManager.getLaunchIntentForPackage(entry.packageName) ?: return
         // DND stays on while the user is inside the launched app.
         startActivity(launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    private fun launchWorkApp(entry: AppEntry) {
+        workProfile.launch(entry.packageName)
     }
 
     private fun unlockFullPhone(fallbackPackage: String?) {

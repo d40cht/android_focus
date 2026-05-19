@@ -31,8 +31,9 @@ fun AppPickerRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     showPackageName: Boolean = true,
+    userHandle: android.os.UserHandle? = null,
 ) {
-    val icon = rememberAppIcon(packageName)
+    val icon = rememberAppIcon(packageName, userHandle)
     Row(
         modifier = Modifier
             .fillMaxWidth()
